@@ -2,11 +2,10 @@
 
 ### Developed at **Renie Tech Trading LLC**  
 **Role:** AI & Automation Engineer  
-**Engineer:** Ansh Srivastava
-**Year:** Jul - Aug 2025  
+**Engineer:** [Your Full Name]  
+**Year:** 2025  
 
 ---
-
 
 
 ## 🚀 Project Overview
@@ -18,7 +17,6 @@ Built entirely using **n8n** and integrated with multiple APIs, this system auto
 ---
 
 
-
 ## 🧩 Modular Architecture
 
 The automation platform is composed of **8 modular workflows**, each built as an independent yet interconnected service within n8n:
@@ -26,23 +24,15 @@ The automation platform is composed of **8 modular workflows**, each built as an
 | # | Module | Purpose |
 |---|---------|----------|
 | **1** | Detection & Storage of Offline Bins | Detects offline bins from Renie API and logs data in Supabase |
-
 | **2** | Alert Creation & POC Communication | Creates alerts and sends notifications via Twilio and SMTP |
-
 | **3** | POC Response Handling | Captures and processes acknowledgment responses |
-
 | **4** | POC Reminder Notifications | Sends timed reminders to unresponsive POCs |
-
 | **5** | Servicing Task Creation | Auto-creates tasks in Monday.com for unresolved bins |
-
 | **6** | Route Optimization & Notification | Uses Google Maps API to optimize routes and notifies via Telegram |
-
 | **7** | Scheduled Power Shutdown | Handles planned outages to prevent false offline alerts |
-
 | **8** | Escalation Management | Escalates unresolved cases across hierarchy levels |
 
 ---
-
 
 
 ## ⚙️ System Components
@@ -59,6 +49,7 @@ The automation platform is composed of **8 modular workflows**, each built as an
 
 ---
 
+
 ## 🧠 Core Capabilities
 
 - Seamless integration with **Renie IoT API** for real-time data ingestion  
@@ -70,6 +61,7 @@ The automation platform is composed of **8 modular workflows**, each built as an
 - **Automated escalation workflows** for missed SLAs  
 
 ---
+
 
 ## 🧩 Architecture Flow
 
@@ -84,6 +76,7 @@ The automation platform is composed of **8 modular workflows**, each built as an
 
 ---
 
+
 ## 📈 Achievements & Impact
 
 | Metric | Result |
@@ -95,6 +88,7 @@ The automation platform is composed of **8 modular workflows**, each built as an
 | Notification Reliability | 📲 **99.7% success rate** |
 
 ---
+
 
 ## 🧮 Validation & CI/CD
 
