@@ -1,0 +1,62 @@
+# ============================================================
+# Offline Bin Detection Automation Project - .gitignore
+# Developed by: [Your Full Name]
+# Role: AI & Automation Engineer
+# Organization: Renie Tech Trading LLC
+# ============================================================
+
+# --- 🧠 System & OS Files ---
+.DS_Store
+Thumbs.db
+
+# --- 🔐 Environment & Credentials ---
+# Local or secret configuration files (never push these)
+.env
+*.env
+secrets.json
+credentials.json
+*.key
+*.pem
+*.pfx
+
+# --- ⚙️ n8n Related Files ---
+# n8n internal data, cache, or credential backups
+.n8n/
+dist/
+.backup/
+*.sqlite
+*.db
+*.tmp
+*.bak
+
+# --- 📦 Node & Dependency Folders ---
+# (if n8n or any supporting script uses Node.js)
+node_modules/
+package-lock.json
+yarn.lock
+
+# --- 🧾 Logs & Temporary Outputs ---
+*.log
+*.tmp
+*.swp
+*.cache
+logs/
+output/
+temp/
+backup/
+
+# --- 🧰 Editor / IDE Configurations ---
+.vscode/
+.idea/
+*.code-workspace
+
+# --- 🧱 Build or Export Artifacts ---
+__pycache__/
+build/
+export/
+*.zip
+*.tar.gz
+
+# --- 🚫 Workflow Exports With Credentials ---
+# In case you accidentally export n8n workflows including real credentials
+exports_with_credentials/

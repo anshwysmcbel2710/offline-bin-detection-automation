@@ -1,0 +1,174 @@
+{
+  "name": "Modular Workflow 8 (8.1) - Only Escalation Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        3600,
+        -96
+      ],
+      "id": "cd2ef047-1127-4734-98b6-c4eb0821d81b",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        4224,
+        -96
+      ],
+      "id": "0d8444b8-18a0-4646-b33d-f5fa23e9cb95",
+      "name": "Split In Batches (1 item per batch)"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n    ba.id,\n    ba.renie_bin_id,\n    ba.alert_type,\n    ba.bin_status_at_alert,\n    ba.sent_at,\n    ba.status,\n    ba.poc_email,\n    ba.reminder_sent_at,\n    ba.reminder_email_sent_at,\n    ba.reminder_whatsapp_sent_at,\n    ba.responded_at,\n    ba.resolved_at,\n    ba.created_at,\n    ba.updated_at,\n\n    -- From bins table\n    b.chip_id,\n    b.current_status,\n    b.current_status_date,\n    b.last_event,\n    b.details_position,\n    b.online,\n    b.review_image,\n    b.qr_code_url,\n    b.binarea_name,\n    b.binarea_city,\n    b.binarea_public,\n    b.wmc_user_name,\n    b.investor_name,\n    b.poc_name,\n    b.poc_designation,\n    b.poc_email AS bin_poc_email,   -- avoid confusion with alert’s poc_email\n    b.poc_contact\n\nFROM bin_alerts ba\nJOIN bins b \n  ON TRIM(ba.renie_bin_id) = TRIM(b.renie_bin_id)\nWHERE \n      (\n        -- Case A: reminder was sent, no response, older than 24 hours\n        ba.status = 'reminder_sent'\n        AND ba.responded_at IS NULL\n        AND GREATEST(\n              COALESCE(ba.reminder_sent_at, '-infinity'),\n              COALESCE(ba.reminder_email_sent_at, '-infinity'),\n              COALESCE(ba.reminder_whatsapp_sent_at, '-infinity')\n            ) <= NOW() - INTERVAL '24 hours'\n      )\n   OR (\n        -- Case B: both reminders failed (immediate escalation)\n        ba.status = 'failed_reminder'\n        AND ba.responded_at IS NULL\n      );\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3904,
+        -96
+      ],
+      "id": "fac81e87-bf47-472f-beaf-f1191ad7b07f",
+      "name": "Postgres – Fetch Escalation Candidates (Execute Query)",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUAPABSE_POSTGRES_ID}}",
+          "name": "{{SUAPABSE_POSTGRES_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE bin_alerts\nSET \n    status = 'escalated',\n    escalated_at = NOW(),\n    updated_at = NOW()\n  \nWHERE TRIM(renie_bin_id) = TRIM('{{$node[\"Split In Batches (1 item per batch)\"].json[\"renie_bin_id\"]}}')\n  \n  AND status IN ('reminder_sent', 'failed_reminder')   -- don’t overwrite if already resolved\n\n  AND responded_at IS NULL;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5008,
+        32
+      ],
+      "id": "8c21c1c9-352d-4eef-86af-e5d73a38aca3",
+      "name": "Postgres - Update Alert Status (escalated)",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUAPABSE_POSTGRES_ID}}",
+          "name": "{{SUAPABSE_POSTGRES_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "{{FROM_EMAIL}}",
+        "toEmail": "{{TO_EMAIL}}",
+        "subject": "=🚨 [Escalation] No Response – Bin Offline at {{$node[\"Split In Batches (1 item per batch)\"].json[\"binarea_name\"]}} ({{$node[\"Split In Batches (1 item per batch)\"].json[\"renie_bin_id\"]}})",
+        "html": "=Hi {{ADMIN_NAME}}, 👋\n\n⚠️ The bin at:\n📍 Location: {{$node[\"Split In Batches (1 item per batch)\"].json[\"details_position\"]}}, {{$node[\"Split In Batches (1 item per batch)\"].json[\"binarea_city\"]}}\n🆔 Bin ID: {{$node[\"Split In Batches (1 item per batch)\"].json[\"renie_bin_id\"]}}\n\nhas been offline since {{$node[\"Split In Batches (1 item per batch)\"].json[\"current_status_date\"]}}.\n\n👉 A reminder email was sent to the assigned POC ({{$node[\"Split In Batches (1 item per batch)\"].json[\"poc_mail \"] || '{{ADMIN_MAIL}}' }}) but no response has been received in the last 24 hours.\n\n🔺 This issue now requires your manual intervention.\n\nPlease take necessary action to resolve this alert.\n\nThanks,\n🤝 Bin Monitoring System",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        4592,
+        -64
+      ],
+      "id": "764a9e59-7def-490e-bd2f-296826878129",
+      "name": "Send email to Admin for Manual Escalation",
+      "webhookId": "{{WEBHOOK_ID}}",
+      "credentials": {
+        "smtp": {
+          "id": "{{SMTP_CREDENTIAL_ID}}",
+          "name": "{{SMTP_CREDENTIAL_NAME}}"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Postgres – Fetch Escalation Candidates (Execute Query)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches (1 item per batch)": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Send email to Admin for Manual Escalation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres – Fetch Escalation Candidates (Execute Query)": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches (1 item per batch)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Update Alert Status (escalated)": {
+      "main": [
+        [
+          {
+            "node": "Postgres – Fetch Escalation Candidates (Execute Query)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send email to Admin for Manual Escalation": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Update Alert Status (escalated)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "69cfa486-6e47-4ae7-9f9c-56d43f32cbec",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "{{INSTANCE_ID}}"
+  },
+  "id": "BGFACQcRLW2p0KNu",
+  "tags": []
+}

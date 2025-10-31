@@ -1,0 +1,306 @@
+{
+  "name": "Modular Workflow 4 (4.6) - Only Reminder Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 20
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        3600,
+        -96
+      ],
+      "id": "b63f312a-ecd5-4ca4-a1c5-f019a8c5862e",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n    ba.id,\n    ba.renie_bin_id,\n    ba.alert_type,\n    ba.bin_status_at_alert,\n    ba.sent_at,\n    ba.status,\n    ba.poc_email,\n    ba.reminder_sent_at,\n    ba.responded_at,\n    ba.resolved_at,\n    ba.created_at,\n    ba.updated_at,\n\n    -- From bins table\n    b.chip_id,\n    b.current_status,\n    b.current_status_date,\n    b.last_event,\n    b.details_position,\n    b.online,\n    b.review_image,\n    b.qr_code_url,\n    b.binarea_name,\n    b.binarea_city,\n    b.binarea_public,\n    b.wmc_user_name,\n    b.investor_name,\n    b.poc_name,\n    b.poc_designation,\n    b.poc_email AS bin_poc_email,   -- to avoid confusion with alert’s poc_email\n    b.poc_contact\n\nFROM bin_alerts ba\nJOIN bins b ON ba.renie_bin_id = b.renie_bin_id\nWHERE \n      (ba.status = 'sent' \n       AND GREATEST(\n             COALESCE(ba.email_sent_at, '-infinity'), \n             COALESCE(ba.whatsapp_sent_at, '-infinity')\n           ) <= NOW() - INTERVAL '24 hours')\n   OR ba.status = 'failed';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3904,
+        -96
+      ],
+      "id": "182c9f68-30a7-47fd-9079-f6c3726d66e1",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUPABSE_POSTGRES_ID}}",
+          "name": "{{SUPABSE_POSTGRES_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        4224,
+        -96
+      ],
+      "id": "47b7f414-b420-4106-949f-dfeb56c484e1",
+      "name": "Split In Batches (1 item per batch)"
+    },
+    {
+      "parameters": {
+        "fromEmail": "{{REMINDER_FROM_EMAIL}}",
+        "toEmail": "{{REMINDER_TEST_EMAIL}}",
+        "subject": "=⏰ [Reminder] Bin Still Offline – {{ $json.binarea_name }} ({{ $json.renie_bin_id }})",
+        "html": "=Hi {{  $json.poc_name || 'POC Team'}}, 👋\n\n⚠️ This is a reminder that the bin at:\n📍 Location: {{ $json.details_position }}, {{ $json.binarea_city }}\n🆔 Bin ID: {{ $json.renie_bin_id }}\n\nhas been offline since {{ $json.current_status_date }}, and we have not received a response from you in the last 24 hours.\n\nCan you please confirm one of the following as soon as possible:\n\n1️⃣ ✅ We shut down the power between [Start Time] and [End Time] daily.\n2️⃣ ❌ The power is ON, but the bin is not functioning.\n\n👉 Please reply with either <b>Option 1</b> or <b>Option 2</b> so we can take further action.\n\nIf you select Option 1 = shut down the power daily, please reply in this format:\nStart Time: [e.g., 7:00 PM]\nEnd Time: [e.g., 9:00 AM]\nDays: [e.g., Monday to Friday]\n\n⏳ This issue has been escalated to Admin for manual intervention, however, if further no response is received, it will gonna escalate to the higher authorities.\n\nThanks for your urgent attention,\n🤝 Bin Monitoring System",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        4688,
+        144
+      ],
+      "id": "1390742c-8cb7-4363-99e3-9b16522b90ed",
+      "name": "Send Automated Reminder Mail to POC",
+      "webhookId": "{{REMINDER_EMAIL_WEBHOOK_ID}}",
+      "credentials": {
+        "smtp": {
+          "id": "{{SMTP_CREDENTIAL_ID}}",
+          "name": "{{SMTP_CREDENTIAL_NAME}}"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "from": "{{TWILIO_WHATSAPP_FROM}}",
+        "to": "{{POC_PHONE}}",
+        "toWhatsapp": true,
+        "message": "=⏰ [Reminder] Response Needed – {{$node[\"Split In Batches (1 item per batch)\"].json[\"binarea_name\"]}} ({{ $json.renie_bin_id }})\n\nHi {{$node[\"Split In Batches (1 item per batch)\"].json[\"poc_name\"] || 'POC Team'}}, 👋\n\nThis is a gentle reminder regarding the bin at:\n\n📍 {{$node[\"Split In Batches (1 item per batch)\"].json[\"details_position\"]}}, {{$node[\"Split In Batches (1 item per batch)\"].json[\"binarea_city\"]}}  \n🆔 Bin ID: {{ $json.renie_bin_id }}\n\nThe bin has been offline since *{{$node[\"Split In Batches (1 item per batch)\"].json[\"current_status_date\"]}}*.\n\nPlease reply with:  \n1️⃣ *Option 1*: ✅ Power is OFF daily (scheduled)  \n2️⃣ *Option 2*: ❌ Power is ON, but bin not working\n\n👉 If Option 1, reply in this format:  \nStart Time: [e.g., 7:00 PM]  \nEnd Time: [e.g., 9:00 AM]  \nDays: [e.g., Mon–Fri]\n\nYour prompt response will help us resolve this quickly.  \nThank you 🙏  \n— Bin Monitoring System",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        4688,
+        -160
+      ],
+      "id": "5194bf8e-58fc-4b97-9ac7-b810d884e753",
+      "name": "Twilio - Send WhatsApp Reminder message to POC",
+      "credentials": {
+        "twilioApi": {
+          "id": "{{TWILIO_CREDENTIAL_ID}}",
+          "name": "{{TWILIO_CREDENTIAL_NAME}}"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH updated AS (\n    UPDATE bin_alerts ba\n    SET\n        status = 'reminder_sent',\n        channels_sent = array_append(COALESCE(channels_sent, '{}'), 'whatsapp'),\n        whatsapp_message_id = '{{ $json[\"sid\"] || \"\" }}',\n        reminder_whatsapp_sent_at = NOW(),\n        reminder_sent_at = COALESCE(reminder_sent_at, NOW()), -- only set if still NULL\n        updated_at = NOW()\n    WHERE TRIM(ba.renie_bin_id) = TRIM('{{$node[\"Split In Batches (1 item per batch)\"].json[\"renie_bin_id\"]}}')\n      AND status IN ('pending', 'failed', 'sent', 'reminder_sent') -- only update if still active\n    RETURNING \n        ba.renie_bin_id,\n        ba.reminder_whatsapp_sent_at,\n        ba.status,\n        ba.channels_sent,\n        ba.whatsapp_message_id,\n        ba.responded_at\n)\nSELECT \n    u.renie_bin_id,\n    u.reminder_whatsapp_sent_at,\n    u.status,\n    u.channels_sent,\n    u.whatsapp_message_id,\n    u.responded_at,\n    b.binarea_name,\n    b.binarea_city,\n    b.current_status_date,\n    b.poc_email,\n    b.poc_name,\n    b.poc_contact,\n    b.details_position\nFROM updated u\nJOIN bins b ON TRIM(b.renie_bin_id) = TRIM(u.renie_bin_id);\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5024,
+        -160
+      ],
+      "id": "16a375e2-ce60-447b-9914-9beb880c4b70",
+      "name": "Postgres - Update Reminder Status (WhatsApp success/fail)",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUPABSE_POSTGRES_ID}}",
+          "name": "{{SUPABSE_POSTGRES_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH updated AS (\n    UPDATE bin_alerts ba\n    SET\n        status = 'reminder_sent',\n        channels_sent = array_append(COALESCE(channels_sent, '{}'), 'email'),\n        email_message_id = '{{ $json[\"messageId\"] || \"\" }}',\n        reminder_email_sent_at = NOW(),\n        reminder_sent_at = COALESCE(reminder_sent_at, NOW()), -- only set if still NULL\n        updated_at = NOW()\n    WHERE TRIM(ba.renie_bin_id) = TRIM('{{$node[\"Split In Batches (1 item per batch)\"].json[\"renie_bin_id\"]}}')\n      AND status IN ('pending', 'failed', 'sent', 'reminder_sent') -- only update if still active\n    RETURNING \n        ba.renie_bin_id,\n        ba.reminder_email_sent_at,\n        ba.status,\n        ba.channels_sent,\n        ba.email_message_id,\n        ba.responded_at\n)\nSELECT \n    u.renie_bin_id,\n    u.reminder_email_sent_at,\n    u.status,\n    u.channels_sent,\n    u.email_message_id,\n    u.responded_at,\n    b.binarea_name,\n    b.binarea_city,\n    b.current_status_date,\n    b.poc_email,\n    b.poc_name,\n    b.poc_contact,\n    b.details_position\nFROM updated u\nJOIN bins b ON TRIM(b.renie_bin_id) = TRIM(u.renie_bin_id);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5024,
+        144
+      ],
+      "id": "542e5071-98be-470e-8993-01ce08a1f28b",
+      "name": "Postgres - Update Reminder Status(Email success/fail)",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUPABSE_POSTGRES_ID}}",
+          "name": "{{SUPABSE_POSTGRES_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE bin_alerts\nSET \n    status = CASE\n        WHEN '{{$json[\"reminder_email_sent_at\"]}}' IS NOT NULL OR '{{$json[\"reminder_whatsapp_sent_at\"]}}' IS NOT NULL \n            THEN 'reminder_sent'\n        ELSE 'failed_reminder'\n    END,\n    sent_at = COALESCE(\n        sent_at,\n        NULLIF('{{$json[\"reminder_email_sent_at\"]}}','')::timestamptz,\n        NULLIF('{{$json[\"reminder_whatsapp_sent_at\"]}}','')::timestamptz,\n        NOW()\n    ),\n    email_sent_at = COALESCE(\n        email_sent_at,\n        NULLIF('{{$json[\"reminder_email_sent_at\"]}}','')::timestamptz\n    ),\n    whatsapp_sent_at = COALESCE(\n        whatsapp_sent_at,\n        NULLIF('{{$json[\"reminder_whatsapp_sent_at\"]}}','')::timestamptz\n    ),\n    email_message_id = COALESCE(email_message_id, '{{$json[\"email_message_id\"]}}'),\n    whatsapp_message_id = COALESCE(whatsapp_message_id, '{{$json[\"whatsapp_message_id\"]}}'),\n    updated_at = NOW()\nWHERE TRIM(renie_bin_id) = TRIM('{{$json[\"renie_bin_id\"]}}')\n  RETURNING renie_bin_id, status;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5920,
+        240
+      ],
+      "id": "1d966030-d8dd-43b4-8bbc-b059e3bc402f",
+      "name": "Postgres – Final Reminder Consolidation Update",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUPABSE_POSTGRES_ID}}",
+          "name": "{{SUPABSE_POSTGRES_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "fieldsToMatchString": "renie_bin_id",
+        "joinMode": "keepEverything",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        5344,
+        0
+      ],
+      "id": "f9ba470a-ce84-41d4-b48a-1bd0a7f38cb3",
+      "name": "Merge – Wait for channels"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches (1 item per batch)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches (1 item per batch)": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Send Automated Reminder Mail to POC",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Twilio - Send WhatsApp Reminder message to POC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Automated Reminder Mail to POC": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Update Reminder Status(Email success/fail)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twilio - Send WhatsApp Reminder message to POC": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Update Reminder Status (WhatsApp success/fail)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Update Reminder Status (WhatsApp success/fail)": {
+      "main": [
+        [
+          {
+            "node": "Merge – Wait for channels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Update Reminder Status(Email success/fail)": {
+      "main": [
+        [
+          {
+            "node": "Merge – Wait for channels",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Postgres – Final Reminder Consolidation Update": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches (1 item per batch)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge – Wait for channels": {
+      "main": [
+        [
+          {
+            "node": "Postgres – Final Reminder Consolidation Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "9878e645-d7ea-49aa-9bc1-fe546685a492",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "{{INSTANCE_ID}}"
+  },
+  "id": "P2M8EocZTmLKo8wl",
+  "tags": []
+}

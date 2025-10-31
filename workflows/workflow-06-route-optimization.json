@@ -1,0 +1,265 @@
+{
+  "name": "Modular Workflow 6 - Route Optimization & Notification",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -496,
+        -80
+      ],
+      "id": "84c89015-d84f-45ba-aa00-db9cd0d761fc",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n    a.id,\n    TRIM(a.renie_bin_id) AS renie_bin_id,\n    a.monday_item_id,                  -- ✅ include monday_item_id\n    a.issue,\n    a.status,\n    a.assigned_date,\n    a.assigned_to,\n    a.city,\n    TRIM(a.google_map_link) AS google_map_link,\n    b.poc_name,\n    b.poc_email,\n    b.poc_contact,\n    b.binarea_name,\n    b.details_position,\n    b.binarea_city\nFROM servicing_tasks a\nJOIN bins b \n  ON TRIM(a.renie_bin_id) = TRIM(b.renie_bin_id)\nWHERE TRIM(a.status) IN ('created');\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -224,
+        -80
+      ],
+      "id": "74750174-c853-4a3a-8285-8c40582877ac",
+      "name": "Postgres - Fetch all pending servicing tasks",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUPABASE_POSTGRES_ID}}",
+          "name": "{{SUPABASE_POSTGRES_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        48,
+        -80
+      ],
+      "id": "2e32ff22-595a-4bfc-9c06-e16ce45285cc",
+      "name": "Split In Batches (1 bin at a time)"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Origin\nconst origin = encodeURIComponent(\"{{ORIGIN_ADDRESS}}\");\n\n// Bin details\nconst binarea_name = $json.binarea_name || \"\";\nconst details_position = $json.details_position || \"\";\nconst binarea_city = $json.binarea_city || \"\";\n\n// Destination\nconst destination = encodeURIComponent(\n  `${binarea_name} ${details_position} ${binarea_city}`.trim()\n);\n\n// Google Maps URL\nconst route_url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}`;\n\n// Get current time in UAE (Asia/Dubai timezone)\nconst now = new Date(\n  new Date().toLocaleString(\"en-US\", { timeZone: \"Asia/Dubai\" })\n);\n\n// Format YYYY-MM-DD\nconst last_updated_date = now.getFullYear() + \"-\" +\n  String(now.getMonth() + 1).padStart(2, \"0\") + \"-\" +\n  String(now.getDate()).padStart(2, \"0\");\n\n// Format HH:MM:SS\nconst last_updated_time = String(now.getHours()).padStart(2, \"0\") + \":\" +\n  String(now.getMinutes()).padStart(2, \"0\") + \":\" +\n  String(now.getSeconds()).padStart(2, \"0\");\n\n// Return as separate fields\nreturn {\n  json: {\n    route_url,\n    last_updated_date,\n    last_updated_time\n  }\n\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        368,
+        0
+      ],
+      "id": "61569431-7463-43af-8907-b3f9bae57111",
+      "name": "Function - Build Google Maps Route Link"
+    },
+    {
+      "parameters": {
+        "resource": "boardItem",
+        "operation": "changeMultipleColumnValues",
+        "boardId": "{{MONDAY_BOARD_ID}}",
+        "itemId": "={{$node[\"Split In Batches (1 bin at a time)\"].json[\"monday_item_id\"]}}",
+        "columnValues": "={\n  \"text_mkvv57b0\": \"{{$json.route_url}}\", \n  \"date_mkvv15a2\": \"{{$json.last_updated_date}}\",\n   \"text_mkvvxnmx\": \"{{$json.last_updated_time}}\",\n   \"color_mkvvk7g\": { \n    \"label\": \"Updated\" \n  }\n\n}"
+      },
+      "type": "n8n-nodes-base.mondayCom",
+      "typeVersion": 1,
+      "position": [
+        672,
+        64
+      ],
+      "id": "988f07b5-ff41-4e6c-922f-9fde7f79e446",
+      "name": "Monday.com - Update (add Google Maps route link in task)",
+      "credentials": {
+        "mondayComApi": {
+          "id": "{{MONDAY_CREDENTIAL_ID}}",
+          "name": "{{MONDAY_CREDENTIAL_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE servicing_tasks\nSET \n    status = 'updated_the_task',\n    updated_at = NOW()\nWHERE TRIM(renie_bin_id) = TRIM('{{$node[\"Split In Batches (1 bin at a time)\"].json[\"renie_bin_id\"]}}')\n  AND status = 'created';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        944,
+        112
+      ],
+      "id": "8d0d734a-bb8d-491b-b96d-677b745a43a7",
+      "name": "Postgres - Updated servicing_tasks (with Google Maps route link)",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUPABASE_POSTGRES_ID}}",
+          "name": "{{SUPABASE_POSTGRES_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE bin_alerts\nSET \n    status = 'servicing_updated_notified_field_team',\n    updated_at = NOW()\nWHERE TRIM(renie_bin_id) = TRIM('{{$node[\"Split In Batches (1 bin at a time)\"].json[\"renie_bin_id\"]}}')\n  AND status = 'servicing_created';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1536,
+        176
+      ],
+      "id": "a1cca896-070e-4ccb-ab69-9dad7478bb1d",
+      "name": "Postgres - Updated bin_alert (with Google Maps route link n notified filed team)",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUPABASE_POSTGRES_ID}}",
+          "name": "{{SUPABASE_POSTGRES_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "{{TELEGRAM_CHAT_ID}}",
+        "text": "=🚨 New Servicing Task Created\n\n🗑️ Bin ID: {{$node[\"Split In Batches (1 bin at a time)\"].json[\"renie_bin_id\"]}}\n⚠️ Issue: Option 2 – Power is ON, but bin is offline (offline > 12h)\n📌 Status: Created and Updated the Serviing task on Monday.com and add the google map route link\n\n👷 Assigned To: {{$node[\"Split In Batches (1 bin at a time)\"].json[\"poc_name\"]}}\n📅 Assigned Date: {{$node[\"Split In Batches (1 bin at a time)\"].json[\"assigned_date\"]}}\n🏙️ City: {{$node[\"Split In Batches (1 bin at a time)\"].json[\"binarea_city\"]}}\n\n📍 Location: {{$node[\"Split In Batches (1 bin at a time)\"].json[\"binarea_name\"]}}, {{$node[\"Split In Batches (1 bin at a time)\"].json[\"details_position\"]}}, {{$node[\"Split In Batches (1 bin at a time)\"].json[\"binarea_city\"]}}\n\n📨 POC: {{$node[\"Split In Batches (1 bin at a time)\"].json[\"poc_name\"]}} ({{$node[\"Split In Batches (1 bin at a time)\"].json[\"poc_email\"]}}, {{$node[\"Split In Batches (1 bin at a time)\"].json[\"poc_contact\"]}})\n\n🗺️ Google Maps Route: {{$node[\"Function - Build Google Maps Route Link\"].json[\"route_url\"]}}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1216,
+        144
+      ],
+      "id": "41f21318-cc1a-4177-81e3-380f873a9ce4",
+      "name": "Send text message to notify field team",
+      "webhookId": "9e76f317-1533-464f-b167-28886b3998aa",
+      "credentials": {
+        "telegramApi": {
+          "id": "{{TELEGRAM_CREDENTIAL_ID}}",
+          "name": "{{TELEGRAM_CREDENTIAL_NAME}}"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Fetch all pending servicing tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Fetch all pending servicing tasks": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches (1 bin at a time)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches (1 bin at a time)": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Function - Build Google Maps Route Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function - Build Google Maps Route Link": {
+      "main": [
+        [
+          {
+            "node": "Monday.com - Update (add Google Maps route link in task)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Monday.com - Update (add Google Maps route link in task)": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Updated servicing_tasks (with Google Maps route link)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Updated servicing_tasks (with Google Maps route link)": {
+      "main": [
+        [
+          {
+            "node": "Send text message to notify field team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send text message to notify field team": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Updated bin_alert (with Google Maps route link n notified filed team)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Updated bin_alert (with Google Maps route link n notified filed team)": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches (1 bin at a time)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "60a1fecd-7f87-4216-a891-e8892ee058a6",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "{{INSTANCE_ID}}"
+  },
+  "id": "7WNCTxCdBEGxWVOU",
+  "tags": []
+}

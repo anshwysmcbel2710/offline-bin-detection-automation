@@ -1,0 +1,30 @@
+name: Validate n8n Workflows
+
+on:
+  push:
+    paths:
+      - 'workflows/**'
+      - 'scripts/**'
+  pull_request:
+    paths:
+      - 'workflows/**'
+      - 'scripts/**'
+
+jobs:
+  validate:
+    name: Validate Offline Bin Automation Workflows
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Run workflow validation script
+        run: bash scripts/validate-workflows.sh
+
+      - name: Display success message
+        if: ${{ success() }}
+        run: echo "✅ All 8 Offline Bin Detection Automation workflows passed validation!"

@@ -1,0 +1,197 @@
+{
+  "name": "Modular Workflow 7 - Scheduled Power Shutdown",
+  "nodes": [
+    {
+      "parameters": {
+        "fromEmail": "{{FROM_EMAIL}}",
+        "toEmail": "{{TO_EMAIL}}",
+        "subject": "=✅ Scheduled Power Shutdown Confirmed for Bin {{$node[\"Postgres Insert/Update (bin_schedules)\"].json[\"renie_bin_id\"]}}",
+        "html": "=Hi {{$node[\"Postgres Insert/Update (bin_schedules)\"].json[\"poc_name\" || 'POC Team']}},👋\n\nWe’ve successfully stored your scheduled power shutdown for the bin:\n🆔 Bin ID: {{$node[\"Postgres Insert/Update (bin_schedules)\"].json[\"renie_bin_id\"]}}\n\n⏰ Start Time: {{$node[\"Function node - Convert data in usable format\"].json[\"start_time_24\"]}}\n🕒 End Time: {{$node[\"Function node - Convert data in usable format\"].json[\"end_time_24\"]}}\n🗓️ Days: {{$node[\"Function node - Convert data in usable format\"].json[\"days_array\"]}}\n\nNo alerts will be generated for this bin during the above window.\n\nIf you need to update or cancel this schedule, please reply to this email.\n\nThanks for your cooperation,\n🤝 Bin Monitoring System",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1024,
+        112
+      ],
+      "id": "7ec95c6d-2d31-4b09-9504-a18de6a3d51b",
+      "name": "Send Confirmation Email to POC",
+      "webhookId": "{{WEBHOOK_ID}}",
+      "credentials": {
+        "smtp": {
+          "id": "{{SMTP_CREDENTIAL_ID}}",
+          "name": "{{SMTP_CREDENTIAL_NAME}}"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO schedules (\n  renie_bin_id,\n  type,\n  description,\n  start_time,\n  end_time,\n  days,\n  created_at,\n  updated_at\n)\nVALUES (\n  '{{ $json[\"renie_bin_id\"] }}',\n  '{{ $json[\"type\"] }}',\n  '{{ $json[\"description\"] }}',\n  '{{ $json[\"start_time_24\"] }}'::time,\n  '{{ $json[\"end_time_24\"] }}'::time,\n  '{{ \"{\" + $json[\"days_array\"].join(\",\") + \"}\" }}'::text[],\n  NOW(),\n  NOW()\n)\nON CONFLICT (renie_bin_id, type)\nDO UPDATE SET\n  description = EXCLUDED.description,\n  start_time = EXCLUDED.start_time,\n  end_time = EXCLUDED.end_time,\n  days = EXCLUDED.days,\n  updated_at = NOW()\nRETURNING id, renie_bin_id;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        384,
+        112
+      ],
+      "id": "7a8e6ff1-e1b6-4eef-a282-018b475d9886",
+      "name": "Postgres Insert/Update (bin_schedules)",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUPABASE_POSTGRES_ID}}",
+          "name": "{{SUPABASE_POSTGRES_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE bin_alerts\nSET status = 'acknowledged',\n    updated_at = NOW()\nWHERE TRIM(renie_bin_id) = TRIM('{{$json.renie_bin_id}}');",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        720,
+        112
+      ],
+      "id": "1df8c235-7a5c-4bc2-a842-d68b7da121e2",
+      "name": "Postgres Update bin_alerts  (acknowledged)",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUPABASE_POSTGRES_ID}}",
+          "name": "{{SUPABASE_POSTGRES_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "function convertTo24Hour(timeStr) {\n  if (!timeStr) return null;\n  const [time, modifier] = timeStr.split(' ');\n  let [hours, minutes] = time.split(':').map(Number);\n  if (modifier.toLowerCase() === 'pm' && hours < 12) hours += 12;\n  if (modifier.toLowerCase() === 'am' && hours === 12) hours = 0;\n  return `${hours.toString().padStart(2,'0')}:${minutes.toString().padStart(2,'0')}:00`;\n}\n\nfunction parseDays(daysStr) {\n  if (!daysStr) return [];\n  const mapping = {\n    monday: \"Mon\", tuesday: \"Tue\", wednesday: \"Wed\", thursday: \"Thu\",\n    friday: \"Fri\", saturday: \"Sat\", sunday: \"Sun\"\n  };\n  if (daysStr.includes(\" to \")) {\n    const [startDay, endDay] = daysStr.toLowerCase().split(\" to \").map(d => d.trim());\n    const keys = Object.keys(mapping);\n    const startIndex = keys.indexOf(startDay);\n    const endIndex = keys.indexOf(endDay);\n    if (startIndex >= 0 && endIndex >= 0) {\n      return keys.slice(startIndex, endIndex + 1).map(d => mapping[d]);\n    }\n  }\n  return daysStr.split(/[, ]+/).map(d => mapping[d.toLowerCase()]).filter(Boolean);\n}\n\n// Get the current item (since Run Once for Each Item)\nconst body = $json.body || {};\n\nreturn {\n  json: {\n    renie_bin_id: body.renie_bin_id || null,\n    type: body.type || null,\n    description: body.description || null,\n    start_time_24: convertTo24Hour(body.start_time),\n    end_time_24: convertTo24Hour(body.end_time),\n    days_array: parseDays(body.days)\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        64,
+        112
+      ],
+      "id": "65345b8b-0c6a-42ca-b00d-25b5894068a4",
+      "name": "Function node - Convert data in usable format"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "{{WEBHOOK_PATH}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -272,
+        112
+      ],
+      "id": "f9262a7e-0f1c-42ba-b959-788b74bb57e5",
+      "name": "Webhook",
+      "webhookId": "{{WEBHOOK_ID}}"
+    },
+    {
+      "parameters": {
+        "fromEmail": "anshsrivastava0473@gmail.com",
+        "toEmail": "ansh.2024cs1162@kiet.edu",
+        "subject": "=🔔 Scheduled Power Shutdown Logged – Bin {{$node[\"Postgres Insert/Update (bin_schedules)\"].json[\"renie_bin_id\"]}}",
+        "html": "=Dear Admin/Internal Team,\n\nThis is to inform you that a scheduled power shutdown has been recorded for the following bin:\n\n📌 Bin Details\n🆔 Bin ID: {{$node[\"Postgres Insert/Update (bin_schedules)\"].json[\"renie_bin_id\"]}}\n\n📅 Shutdown Schedule\n⏰ Start Time: {{$node[\"Function node - Convert data in usable format\"].json[\"start_time_24\"]}}\n🕒 End Time: {{$node[\"Function node - Convert data in usable format\"].json[\"end_time_24\"]}}\n🗓️ Days: {{$node[\"Function node - Convert data in usable format\"].json[\"days_array\"]}}\n\n✅ During this time window, alerts for this bin will be suppressed automatically to prevent false notifications.\n\nIf you have any concerns or would like to modify the schedule, please reach out to the operations team.\n\nThank you,\nBin Monitoring System",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1392,
+        112
+      ],
+      "id": "8889a694-e96c-4b28-82b9-a60a60c2f2f9",
+      "name": "Send email to Admin (or Internal team) for Manual Escalation",
+      "webhookId": "{{WEBHOOK_ID}}",
+      "credentials": {
+        "smtp": {
+          "id": "{{SMTP_CREDENTIAL_ID}}",
+          "name": "{{SMTP_CREDENTIAL_NAME}}"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Send Confirmation Email to POC": {
+      "main": [
+        [
+          {
+            "node": "Send email to Admin (or Internal team) for Manual Escalation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Insert/Update (bin_schedules)": {
+      "main": [
+        [
+          {
+            "node": "Postgres Update bin_alerts  (acknowledged)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Update bin_alerts  (acknowledged)": {
+      "main": [
+        [
+          {
+            "node": "Send Confirmation Email to POC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function node - Convert data in usable format": {
+      "main": [
+        [
+          {
+            "node": "Postgres Insert/Update (bin_schedules)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Function node - Convert data in usable format",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Kolkata",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "62f1a1ea-faa7-444e-a772-a3e24eb13a02",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "{{INSTANCE_ID}}"
+  },
+  "id": "nY9vUcBHA5oGblX8",
+  "tags": []
+}

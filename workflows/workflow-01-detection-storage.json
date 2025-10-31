@@ -1,0 +1,452 @@
+{
+  "name": "Modular Workflow 1 - Detection & Storage Offline Bins",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1792,
+        -400
+      ],
+      "id": "ee3ae80d-8f61-4256-8a8f-5df5c16164fd",
+      "name": "Schedule Trigger (entry) "
+    },
+    {
+      "parameters": {
+        "url": "https://api-admin.renie.io/bins/placed-bins?count=500&online=false",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "state",
+              "value": "offline"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-bypass-email",
+              "value": "{{RENIE_AUTH_EMAIL}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1216,
+        -400
+      ],
+      "id": "55abc3a5-9afb-424d-a0d3-68927c180b32",
+      "name": "HTTP Request – Renie: Get Offline Bin"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "bins",
+          "mode": "list",
+          "cachedResultName": "bins"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "renie_bin_id": "={{$json.renie_bin_id || missing_renie_bin_id}} ",
+            "chip_id": "={{ $json.chip_id }}",
+            "binarea_name": "={{ $json.binarea_name }}",
+            "binarea_city": "={{ $json.binarea_city }}",
+            "details_position": "={{ $json.details_position }}",
+            "current_status": "={{ $json.current_status }}",
+            "binarea_public": "={{ $json.binarea_public }}",
+            "last_event": "={{ $json.last_event }}",
+            "current_status_date": "={{ $json.current_status_date }}",
+            "design_type": "={{ $json.design_type }}",
+            "online": "={{ $json.online }}",
+            "purchased": "={{ $json.purchased }}",
+            "type": "={{ $json.type }}",
+            "mqtt": "={{ $json.mqtt }}",
+            "accessible": "={{ $json.accessible }}",
+            "review_image": "={{ $json.review_image }}",
+            "qr_code_url": "={{ $json.qr_code_url }}",
+            "wmc_user_name": "={{ $json.wmc_user_name }}",
+            "investor_name": "={{ $json.investor_name }}",
+            "created_at": "={{ $now }}",
+            "poc_name": "={{ $json.poc_name }}",
+            "poc_designation": "={{ $json.poc_designation }}",
+            "poc_email": "={{$json.poc_email || 'default@yourcompany.com'}}",
+            "poc_contact": "={{ $json.poc_contact }}"
+          },
+          "matchingColumns": [
+            "renie_bin_id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "renie_bin_id",
+              "displayName": "renie_bin_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "chip_id",
+              "displayName": "chip_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "bin_code",
+              "displayName": "bin_code",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "binarea_name",
+              "displayName": "binarea_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "binarea_city",
+              "displayName": "binarea_city",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "details_position",
+              "displayName": "details_position",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "binarea_public",
+              "displayName": "binarea_public",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "current_status",
+              "displayName": "current_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "last_event",
+              "displayName": "last_event",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "current_status_date",
+              "displayName": "current_status_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "last_seen_at",
+              "displayName": "last_seen_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "installed_at",
+              "displayName": "installed_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "online",
+              "displayName": "online",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "purchased",
+              "displayName": "purchased",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "design_type",
+              "displayName": "design_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "type",
+              "displayName": "type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "mqtt",
+              "displayName": "mqtt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "accessible",
+              "displayName": "accessible",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "review_image",
+              "displayName": "review_image",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "qr_code_url",
+              "displayName": "qr_code_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "wmc_user_name",
+              "displayName": "wmc_user_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "investor_name",
+              "displayName": "investor_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "poc_name",
+              "displayName": "poc_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "poc_designation",
+              "displayName": "poc_designation",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "poc_email",
+              "displayName": "poc_email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "poc_contact",
+              "displayName": "poc_contact",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -96,
+        -400
+      ],
+      "id": "30312fe9-2a5c-48a2-b6cb-ecd78c0f9ad5",
+      "name": "Postgres: Update Bins (copy and store metadata of offline bins)",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUPABASE_POSTGRES_ID}}",
+          "name": "{{SUPABASE_POSTGRES_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code Node (Run Once for All Items)\n\nconst response = items[0].json; // your API response\nconst bins = response.data?.bins || [];\n\nlet results = [];\n\nfor (const bin of bins) {\n  const poc = bin.poc_details?.[0] || {};\n  const comp = bin.compartments_usage?.[0] || {};\n\n  results.push({\n    json: {\n      renie_bin_id: bin.id,\n      chip_id: bin.chip_id,\n      current_status: bin.current_status,\n      current_status_date: bin.current_status_date,\n      last_event: bin.last_event,\n      details_position: bin.details_position,\n      purchased: bin.purchased ?? null,\n      design_type: bin.design_type ?? null,\n      online: bin.online,\n      type: bin.type,\n      review_image: bin.review_image ?? null,\n      accessible: bin.accessible,\n      created_at: bin.created_at,\n      mqtt: bin.mqtt,\n      qr_code_url: bin.qr_code_url,\n      binarea_name: bin.binarea_name,\n      binarea_city: bin.binarea_city,\n      binarea_public: bin.binarea_public,\n      wmc_user_name: bin.wmc_user_name,\n      investor_name: bin.investor_name,\n      poc_name: poc.name ?? null,\n      poc_designation: poc.designation ?? null,\n      poc_email: poc.email || null,\n      poc_contact: poc.contact || null,\n      compartment: comp.compartment ?? null,\n      current_usage: comp.current_usage ?? null,\n    }\n  });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -656,
+        -400
+      ],
+      "id": "6a2cbd98-b8be-41a1-87ea-144911b22b7a",
+      "name": "Function — Flattening Fields (coming from Renie API)"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger (entry) ": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request – Renie: Get Offline Bin",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request – Renie: Get Offline Bin": {
+      "main": [
+        [
+          {
+            "node": "Function — Flattening Fields (coming from Renie API)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres: Update Bins (copy and store metadata of offline bins)": {
+      "main": [
+        []
+      ]
+    },
+    "Function — Flattening Fields (coming from Renie API)": {
+      "main": [
+        [
+          {
+            "node": "Postgres: Update Bins (copy and store metadata of offline bins)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "3c883148-f348-474d-aa06-4cc322950cb7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "{{INSTANCE_ID}}"
+  },
+  "id": "EEQpFzFQLhsbFmnl",
+  "tags": []
+}

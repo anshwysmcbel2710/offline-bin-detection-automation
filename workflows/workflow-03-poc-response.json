@@ -1,0 +1,470 @@
+{
+  "name": "Modular Workflow 3 (3.7) - Whatsapp n Email POC response Trigger for Testing",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {
+          "customEmailConfig": "[\"SEEN\", [\"FROM\", \"{{POC_RESPONSE_MAIL}}\"]]",
+          "trackLastMessageId": true
+        }
+      },
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2.1,
+      "position": [
+        4288,
+        112
+      ],
+      "id": "6cb0db52-2d27-462e-b6d9-ad48cbfa4000",
+      "name": "Email Trigger (IMAP) - Check POC Response",
+      "credentials": {
+        "imap": {
+          "id": "{{IMAP_CREDENTIAL_ID}}",
+          "name": "{{IMAP_CREDENTIAL_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE bin_alerts\nSET \n    status = 'option1',\n    responded_at = NOW(),\n    sent_at = NOW(),\n    updated_at = NOW()\nWHERE TRIM(renie_bin_id) = TRIM('{{ $json.renie_bin_id }}')\n  AND status = 'sent';\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        6784,
+        -192
+      ],
+      "id": "6fb8138e-f00e-4d39-ad5a-551570e70bb2",
+      "name": "Postgres – Update Alert Status (set option1)",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUPABASE_POSTGRES_ID}}",
+          "name": "{{SUPABASE_POSTGRES_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE bin_alerts\nSET \n    status = 'option2',\n    responded_at = NOW(),\n    sent_at = NOW(),\n    updated_at = NOW()\nWHERE TRIM(renie_bin_id) = TRIM('{{ $json.renie_bin_id }}')\n  AND status = 'sent';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        6784,
+        160
+      ],
+      "id": "f2c3c7f3-5dab-48ac-b8fc-4e2a1f0b8763",
+      "name": "Postgres – Update Alert Status (set option2)",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUPABASE_POSTGRES_ID}}",
+          "name": "{{SUPABASE_POSTGRES_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{$json[\"parsedOption\"]}}",
+                    "rightValue": "option1",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "80e9fbfc-0a1c-4054-9249-22859313f7ee"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Option 1: Scheduled Power  Shutdown"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "7972ba4b-9537-4ee5-bd8e-8e2dc83d6001",
+                    "leftValue": "={{$json[\"parsedOption\"]}}",
+                    "rightValue": "option2",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Option 2: Power is ON, but bin is  offline"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        6416,
+        48
+      ],
+      "id": "adca72bd-c099-4df7-aeea-041a86ebc8ae",
+      "name": "Switch ( Option 1 or Option 2)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "{{WORKFLOW7_SHUTDOWN_WEBHOOK_URL}}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{\n  \"Content-Type\": \"application/json\"\n}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"renie_bin_id\": \"{{$node[\"Switch ( Option 1 or Option 2)\"].json[\"renie_bin_id\"]}}\",\n  \"type\": \"power_shutdown\",\n  \"description\": \"Scheduled power shutdown confirmed by POC\",\n  \"start_time\": \"{{$node[\"Switch ( Option 1 or Option 2)\"].json[\"start_time\"]}}\",\n  \"end_time\": \"{{$node[\"Switch ( Option 1 or Option 2)\"].json[\"end_time\"]}}\",\n  \"days\": \"{{$node[\"Switch ( Option 1 or Option 2)\"].json[\"days\"]}}\",\n  \"poc_email\": \"{{$node[\"Switch ( Option 1 or Option 2)\"].json[\"poc_email\"]}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        7120,
+        -192
+      ],
+      "id": "1a9992ac-38ee-4aab-803b-df4bd40f3a57",
+      "name": "HTTP Request → call Workflow 7"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "{{WHATAPP_WEBHOOK_PATH}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        4288,
+        400
+      ],
+      "id": "d8b803a6-3d40-41ae-9ff1-0c1c559b07f6",
+      "name": "Whatsapp Trigger (Webhook) - Check POC Response",
+      "webhookId": "{{WHATAPP_WEBHOOK_ID}}"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// 1. Get subject and body\nconst subject = $json.subject || \"\";\nlet body = $json.textPlain || $json.text || $json.Body || \"\";\n\n// Clean HTML if exists\nif (!body && $json.textHtml) {\n  body = $json.textHtml\n    .replace(/<br\\s*\\/?>/gi, \"\\n\")\n    .replace(/<\\/?[^>]+(>|$)/g, \"\");\n}\n\nconst content = subject + \"\\n\" + body;\n\n// 2. Extract Option (case-insensitive)\nlet parsedOption = \"unknown\";\nif (/option\\s*1\\b/i.test(content)) {\n  parsedOption = \"option1\";\n} else if (/option\\s*2\\b/i.test(content)) {\n  parsedOption = \"option2\";\n}\n\n// 3. Extract Start Time\nlet start_time = null;\nconst startMatch = content.match(/start\\s*time\\s*[:\\-]?\\s*([0-9]{1,2}:[0-9]{2}\\s*(am|pm))/i);\nif (startMatch) start_time = startMatch[1].trim();\n\n// 4. Extract End Time\nlet end_time = null;\nconst endMatch = content.match(/end\\s*time\\s*[:\\-]?\\s*([0-9]{1,2}:[0-9]{2}\\s*(am|pm))/i);\nif (endMatch) end_time = endMatch[1].trim();\n\n// 5. Extract Days\nlet days = null;\nconst daysMatch = content.match(/days\\s*[:\\-]?\\s*([^\\n\\r]*)/i);\nif (daysMatch) days = daysMatch[1].trim();\n\n// 6. Extract renie_bin_id (STRICT - FULL ID)\nlet renie_bin_id = null;\n\n// STRICT regex for full bin ID:\n// 1. Optional \"Renie\"/\"Rnie\"\n// 2. Mandatory \"Bin\"\n// 3. Mandatory label: ID, Id, ID, Number, No, Code\n// 4. Separator: :, -, #, space\n// 5. Capture everything that looks like an ID (alphanumeric + dashes) until first space, line break, or punctuation\nconst binRegex = /\\b(?:renie|rnie)?\\s*bin\\s*(?:id|Id|ID|number|no|code)\\s*[\\s:\\-#]*\\s*([A-Za-z0-9\\-]{6,})/i;\n\nconst binMatch = content.match(binRegex);\nif (binMatch) renie_bin_id = binMatch[1].trim();\n\n// 7. Detect response channel (email / whatsapp)\nconst response_channel = $json.Body ? \"whatsapp\" : \"email\";\n\n// 8. Return unified structured output\nreturn {\n  json: {\n    ...$json,\n    parsedOption,\n    start_time,\n    end_time,\n    days,\n    renie_bin_id,        // FULL, accurate bin ID\n    response_channel,    // email or whatsapp\n    raw_content: content\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4672,
+        240
+      ],
+      "id": "45aa4426-80ce-4731-8165-92568fbf6c47",
+      "name": "Function Node – Normalize POC Response"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// 1. Get raw content from normalized node\nconst content = $json.raw_content || \"\";\n\n// 2. Extract Option (case-insensitive)\nlet parsedOption = \"unknown\";\nif (/option\\s*1\\b/i.test(content)) {\n    parsedOption = \"option1\";\n} else if (/option\\s*2\\b/i.test(content)) {\n    parsedOption = \"option2\";\n}\n\n// 3. Extract Start Time\nlet start_time = null;\nconst startMatch = content.match(/start\\s*time\\s*[:\\-]?\\s*([0-9]{1,2}:[0-9]{2}\\s*(am|pm))/i);\nif (startMatch) start_time = startMatch[1].trim();\n\n// 4. Extract End Time\nlet end_time = null;\nconst endMatch = content.match(/end\\s*time\\s*[:\\-]?\\s*([0-9]{1,2}:[0-9]{2}\\s*(am|pm))/i);\nif (endMatch) end_time = endMatch[1].trim();\n\n// 5. Extract Days\nlet days = null;\nconst daysMatch = content.match(/days\\s*[:\\-]?\\s*([^\\n\\r]*)/i);\nif (daysMatch) days = daysMatch[1].trim();\n\n// 6. Extract full renie_bin_id (STRICT regex)\nlet renie_bin_id = null;\nconst binRegex = /\\b(?:renie|rnie)?\\s*bin\\s*(?:id|Id|ID|number|no|code)\\s*[\\s:\\-#]*\\s*([A-Za-z0-9\\-]{6,})/i;\nconst binMatch = content.match(binRegex);\nif (binMatch) renie_bin_id = binMatch[1].trim();\n\n// 7. Detect source channel (email/whatsapp)\nconst response_channel = $json.source || \"email\";\n\n// 8. Return structured JSON for next nodes\nreturn {\n    json: {\n        renie_bin_id,        // full bin ID\n        parsedOption,        // option1 / option2 / unknown\n        start_time,\n        end_time,\n        days,\n        response_channel,    // first channel to respond\n        poc_contact: $json.poc_contact,\n    }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6048,
+        48
+      ],
+      "id": "ceb651ab-bb77-45a6-bde9-eb4b016cc001",
+      "name": "Function Node – Parse POC Response"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO bin_alerts (\n    renie_bin_id,\n    alert_type,\n    bin_status_at_alert,\n    sent_at,\n    status,\n    poc_email,\n    poc_phone,\n    response_channel,\n    responded_at,\n    updated_at\n)\nVALUES (\n    TRIM('{{ $json.renie_bin_id }}'),\n    'offline',\n    TRIM('{{ $json.current_status }}'),\n    NOW(),\n    TRIM('{{ $json.parsedOption }}'),\n    TRIM('{{ $json.poc_contact }}'),\n    TRIM('{{ $json.poc_phone }}'),\n    TRIM('{{ $json.response_channel }}'),\n    NOW(),\n    NOW()\n)\nON CONFLICT (renie_bin_id) DO UPDATE\nSET\n    status = TRIM(EXCLUDED.status),\n    response_channel = TRIM(COALESCE(bin_alerts.response_channel, EXCLUDED.response_channel)),\n    response_body = COALESCE(bin_alerts.response_body, EXCLUDED.response_body),\n    responded_at = COALESCE(bin_alerts.responded_at, EXCLUDED.responded_at),\n    updated_at = NOW();\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4992,
+        240
+      ],
+      "id": "417b0d50-52db-424b-bebd-931369979394",
+      "name": "Postgres Node – Claim Response",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUPABASE_POSTGRES_ID}}",
+          "name": "{{SUPABASE_POSTGRES_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Input variables from previous nodes\nconst parsedOption = $json.parsedOption;       // \"option1\", \"option2\", \"unknown\"\nconst claimResult = $json.claimResult || null; // Postgres node output for this bin\n\n// Initialize output\nlet output = {\n    proceed: false,              // default: do not proceed\n    message: \"\",\n    parsedOption,\n    renie_bin_id: $json.renie_bin_id,\n    poc_contact: $json.poc_contact,\n    source: $json.source\n};\n\n// Step 1: Check if response is valid\nif (parsedOption !== \"option1\" && parsedOption !== \"option2\") {\n    output.message = `Invalid response received from POC (${output.poc_contact}). Ending branch.`;\n    return { json: output, continue: false }; // END branch\n}\n\n// Step 2: Check if this is the first valid response\n// claimResult will be null or empty array if Postgres insert did nothing (duplicate)\nif (!claimResult || (Array.isArray(claimResult) && claimResult.length === 0)) {\n    output.message = `Duplicate response or already claimed for bin ${output.renie_bin_id}. Ending branch.`;\n    return { json: output, continue: false }; // END branch\n}\n\n// Step 3: First valid response – proceed\noutput.proceed = true;\noutput.message = `Valid first response received for bin ${output.renie_bin_id}. Proceeding to parse.`;\n\nreturn { json: output };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5312,
+        240
+      ],
+      "id": "7ce1e568-67f7-474e-a410-7d41db8ee34c",
+      "name": "Function Node – Check Claim"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cdd38b3f-f7e0-4935-98f8-3e92932dffd6",
+              "leftValue": "={{$json[\"proceed\"]}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5632,
+        240
+      ],
+      "id": "f63c1ebe-8f1d-4675-a280-e52b75485acf",
+      "name": "IF Node – Decision"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"message\": \"Duplicate or invalid response received from POC\",\n  \"renie_bin_id\": \"{{ $json.renie_bin_id }}\",\n  \"poc_contact\": \"{{ $json.poc_contact }}\",\n  \"parsedOption\": \"{{ $json.parsedOption }}\",\n  \"response_channel\": \"{{ $json.response_channel }}\",\n  \"timestamp\": \"{{ $now }}\"\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        6032,
+        528
+      ],
+      "id": "f859513c-d10d-41c9-b8d9-1d0a43df63d8",
+      "name": "Set Node - Prepare or structure data beore sending it to Postgres"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ops_log (\n    bin_id,\n    error_code,\n    error_message,\n    created_at\n)\nVALUES (\n    (SELECT id FROM bins WHERE renie_bin_id = TRIM('{{ $json.renie_bin_id }}')),  -- get internal bin UUID\n    'duplicate_or_invalid_response',\n    TRIM('{{ $json.message }}'),\n    NOW()\n);\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        6336,
+        528
+      ],
+      "id": "29f4ecf8-c71b-4ad9-84ab-23603dd16d1c",
+      "name": "Postgres Node - Insert into ops_log",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUPABASE_POSTGRES_ID}}",
+          "name": "{{SUPABASE_POSTGRES_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        6672,
+        528
+      ],
+      "id": "4b020e93-9a0b-4d09-9d90-d6243cf908f3",
+      "name": "End of Workflow"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Email Trigger (IMAP) - Check POC Response": {
+      "main": [
+        [
+          {
+            "node": "Function Node – Normalize POC Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres – Update Alert Status (set option2)": {
+      "main": [
+        []
+      ]
+    },
+    "Switch ( Option 1 or Option 2)": {
+      "main": [
+        [
+          {
+            "node": "Postgres – Update Alert Status (set option1)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Postgres – Update Alert Status (set option2)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres – Update Alert Status (set option1)": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request → call Workflow 7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Whatsapp Trigger (Webhook) - Check POC Response": {
+      "main": [
+        [
+          {
+            "node": "Function Node – Normalize POC Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function Node – Normalize POC Response": {
+      "main": [
+        [
+          {
+            "node": "Postgres Node – Claim Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Node – Claim Response": {
+      "main": [
+        [
+          {
+            "node": "Function Node – Check Claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function Node – Check Claim": {
+      "main": [
+        [
+          {
+            "node": "IF Node – Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Node – Decision": {
+      "main": [
+        [
+          {
+            "node": "Function Node – Parse POC Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Node - Prepare or structure data beore sending it to Postgres",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function Node – Parse POC Response": {
+      "main": [
+        [
+          {
+            "node": "Switch ( Option 1 or Option 2)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Node - Prepare or structure data beore sending it to Postgres": {
+      "main": [
+        [
+          {
+            "node": "Postgres Node - Insert into ops_log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Node - Insert into ops_log": {
+      "main": [
+        [
+          {
+            "node": "End of Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "be16c264-fed4-4739-bfc1-ec91ad6991e6",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "{{INSTANCE_ID}}"
+  },
+  "id": "a827CHIRKCaofnc0",
+  "tags": []
+}

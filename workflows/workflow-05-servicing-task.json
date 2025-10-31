@@ -1,0 +1,262 @@
+{
+  "name": "Modular Workflow 5 - Servicing Task Creation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -608,
+        -64
+      ],
+      "id": "ae6ab016-0e2c-453a-9a0f-f2a2101b0102",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  a.renie_bin_id,\n  b.binarea_name,\n  b.binarea_city,\n  b.details_position,\n  b.poc_name,\n  b.poc_email,\n  b.poc_contact\nFROM bin_alerts a\nJOIN bins b \n  ON TRIM(a.renie_bin_id) = TRIM(b.renie_bin_id)\nWHERE TRIM(a.status) = 'option2';\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -320,
+        -64
+      ],
+      "id": "208bed7a-d36e-4510-ad34-46531933e556",
+      "name": "Postgres Execute Query  (alerts with status = option2)",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUPABASE_POSTGRES_ID}}",
+          "name": "{{SUPABASE_POSTGRES_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        0,
+        -64
+      ],
+      "id": "35cbf295-9081-4509-a510-1e5ed7b2655e",
+      "name": "Split In Batches (1 item per batch)"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO servicing_tasks (\n  renie_bin_id,\n  monday_item_id,     -- NEW column\n  issue,\n  status,\n  assigned_date,\n  assigned_to,\n  resolved_at,\n  city,\n  google_map_link,\n  created_at,\n  updated_at\n)\nVALUES (\n  '{{$json.renie_bin_id}}',\n  '',  -- ✅ monday_item_id\n  'Option 2: Power is ON, but bin is offline, not working and Bin offline > 12h',  \n  'created',                         \n  (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dubai'),                      \n  NULL,                              \n  NULL,                              \n  '{{$json.binarea_city}}',          -- just the city\n  NULL,                              \n  NOW(),\n  NOW()\n)\nRETURNING id, assigned_date, monday_item_id;\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        320,
+        0
+      ],
+      "id": "312ca970-9fa7-450c-bfb6-9da61589a6f6",
+      "name": "Postgres Insert (servicing_tasks)",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUPABASE_POSTGRES_ID}}",
+          "name": "{{SUPABASE_POSTGRES_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE bin_alerts\nSET status = 'servicing_created',\n    updated_at = NOW()\nWHERE TRIM(renie_bin_id) = TRIM('{{$node[\"Split In Batches (1 item per batch)\"].json[\"renie_bin_id\"]}}');",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1888,
+        224
+      ],
+      "id": "4f1539d7-e07f-4c6e-8c41-9db71a7f3f09",
+      "name": "Postgres Update Alert Status (servicing_created)",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUPABASE_POSTGRES_ID}}",
+          "name": "{{SUPABASE_POSTGRES_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "boardItem",
+        "boardId": "{{MONDAY_BOARD_ID}}",
+        "groupId": "{{MONDAY_GROUP_ID}}",
+        "name": "=Bin Servicing Required: Bin ID - {{$node[\"Split In Batches (1 item per batch)\"].json[\"renie_bin_id\"]}}",
+        "additionalFields": {
+          "columnValues": "={\n  \"numeric_mkvvwkv3\": 1,\n  \"date_mkvvq5yr\": \"{{$json.assigned_date}}\",\n  \"text_mkvv8m5j\": \"{{$json.assigned_time}}\",\n  \"text_mkvvzdat\": \"{{$node['Split In Batches (1 item per batch)'].json['renie_bin_id']}}\",\n  \"text_mkvvwf2w\": \"{{$node['Split In Batches (1 item per batch)'].json['binarea_city']}}\",\n  \"text_mkvvk8eg\": \"{{$node['Split In Batches (1 item per batch)'].json['binarea_name']}}\",\n  \"text_mkvv9ge0\": \"{{$node['Split In Batches (1 item per batch)'].json['details_position']}}\",\n  \"text_mkvvdcz7\": \"Option 2: Power is ON, but bin is offline > 12h\",\n  \"color_mkvvk7g\": { \n    \"label\": \"Created\" \n  },\n  \"text_mkvv3kcx\": \"{{$node['Split In Batches (1 item per batch)'].json['poc_name']}}\",\n  \"text_mkvvhcxq\": \"{{$node['Split In Batches (1 item per batch)'].json['poc_email']}}\",\n  \"text_mkvvxs7m\": \"{{$node['Split In Batches (1 item per batch)'].json['poc_contact']}}\",\n  \"text_mkvv57b0\": \"\"\n}"
+        }
+      },
+      "type": "n8n-nodes-base.mondayCom",
+      "typeVersion": 1,
+      "position": [
+        1056,
+        64
+      ],
+      "id": "648fe876-4575-4a6c-ae07-00a4003efe54",
+      "name": "Monday.com - Create an item in a board's group",
+      "credentials": {
+        "mondayComApi": {
+          "id": "{{MONDAY_CREDENTIAL_ID}}",
+          "name": "{{MONDAY_CREDENTIAL_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take the ISO string from input JSON\nconst iso = $json.assigned_date;\n\n// Parse into Date object\nconst dateObj = new Date(iso);\n\n// Format YYYY-MM-DD (local date)\nconst assigned_date = dateObj.toISOString().split('T')[0];\n\n// Format HH:MM:SS (local time)\nconst assigned_time = dateObj.toISOString().split('T')[1].split('.')[0];\n\n// Return as separate fields\nreturn {\n  json: {\n    assigned_date,\n    assigned_time\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        32
+      ],
+      "id": "4f7c375f-53de-49db-acfb-2e3102de2d29",
+      "name": "Function - To convert date format"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE servicing_tasks\nSET monday_item_id = '{{$json[\"id\"]}}',\n    updated_at = NOW()\nWHERE renie_bin_id = '{{$node[\"Split In Batches (1 item per batch)\"].json[\"renie_bin_id\"]}}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1456,
+        112
+      ],
+      "id": "7d1938ed-0270-462b-a045-826716f52442",
+      "name": "Postgres - Update servicing tasks (with monday_item_id)",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUPABASE_POSTGRES_ID}}",
+          "name": "{{SUPABASE_POSTGRES_NAME}}"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Postgres Execute Query  (alerts with status = option2)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches (1 item per batch)": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Postgres Insert (servicing_tasks)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Execute Query  (alerts with status = option2)": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches (1 item per batch)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Insert (servicing_tasks)": {
+      "main": [
+        [
+          {
+            "node": "Function - To convert date format",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Update Alert Status (servicing_created)": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches (1 item per batch)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Monday.com - Create an item in a board's group": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Update servicing tasks (with monday_item_id)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function - To convert date format": {
+      "main": [
+        [
+          {
+            "node": "Monday.com - Create an item in a board's group",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Update servicing tasks (with monday_item_id)": {
+      "main": [
+        [
+          {
+            "node": "Postgres Update Alert Status (servicing_created)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f8f62a4e-e6a9-4d30-88f6-ed1fc0b103d9",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "{{INSTANCE_ID}}"
+  },
+  "id": "6pNb7V7hoMcKKWqZ",
+  "tags": []
+}

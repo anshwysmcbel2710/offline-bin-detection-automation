@@ -1,0 +1,338 @@
+{
+  "name": "Modular Workflow 2 (2.7) - Adding Whatsapp n Email parallelly",
+  "nodes": [
+    {
+      "parameters": {
+        "fromEmail": "{{SMTP_FROM_EMAIL}}",
+        "toEmail": "{{SMTP_TO_EMAIL}}",
+        "subject": "=🚨[Alert]  Bin Offline – {{$node[\"Split In Batches (1 item per batch)\"].json[\"binarea_name\"]}} ({{ $json.renie_bin_id }})",
+        "html": "=Hi {{$node[\"Split In Batches (1 item per batch)\"].json[\"poc_name \"] || 'POC Team' }}, 👋\n\n⚠️ We noticed that the bin at <b>{{$node[\"Split In Batches (1 item per batch)\"].json[\"binarea_name\"]}}</b>  \n📍 Location:{{$node[\"Split In Batches (1 item per batch)\"].json[\"details_position\"]}} {{$node[\"Split In Batches (1 item per batch)\"].json[\"binarea_city\"]}} \n🆔 Bin ID: {{ $json.renie_bin_id }}  \n\nhas been <b>offline since {{$node[\"Split In Batches (1 item per batch)\"].json[\"current_status_date\"]}} </b>.  \n\nCan you please confirm one of the following:\n\n1️⃣ ✅ We shut down the power between [Start Time] and [End Time] daily.  \n2️⃣ ❌ The power is ON, but the bin is not functioning.  \n\n👉 Please reply with either <b>Option 1</b> or <b>Option 2</b>.\n\nIf you select Option 1 = shut down the power daily, please reply in this format:\nStart Time: [e.g., 7:00 PM]\nEnd Time: [e.g., 9:00 AM]\nDays: [e.g., Monday to Friday]\n\nThanks for your quick support,  \n🤝 Bin Monitoring System",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        -496,
+        -336
+      ],
+      "id": "6dfeb1cd-61e4-4462-9db4-bff4a9e97bc3",
+      "name": "Send automated Email to POC",
+      "webhookId": "32cbec1d-2940-4ad8-9f4f-db1a0da28850",
+      "credentials": {
+        "smtp": {
+          "id": "{{SMTP_CREDENTIAL_ID}}",
+          "name": "{{SMTP_CREDENTIAL_NAME}}"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1760,
+        -608
+      ],
+      "id": "a69cd2af-fd51-43d0-9c84-b8f9c3447e88",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n    b.*,\n    EXTRACT(EPOCH FROM (NOW() - b.current_status_date))/3600 AS offline_duration_hours\nFROM bins b\nWHERE b.online ILIKE 'false'          -- 1. Bin offline (string stored as 'false')\n\n  -- 2. Must be offline > 12h\n  AND (NOW() - b.current_status_date) > INTERVAL '12 hours'\n\n  -- 3. Exclude bins in general recurring shutdowns\n  AND NOT EXISTS (\n    SELECT 1\n    FROM schedules s\n    WHERE s.renie_bin_id = b.renie_bin_id\n      AND s.type = 'power_shutdown'\n      AND CURRENT_TIME BETWEEN s.start_time AND s.end_time\n      AND to_char(NOW(), 'Dy') = ANY (s.days)\n  )\n\n  -- 4. Exclude bins in one-off custom shutdowns\n  AND NOT EXISTS (\n    SELECT 1\n    FROM bin_schedules bs\n    WHERE bs.renie_bin_id = b.renie_bin_id\n      AND NOW() BETWEEN bs.sched_start AND bs.sched_end\n  )\n\n  -- 5. Exclude bins that already have an active servicing task\n  AND NOT EXISTS (\n    SELECT 1\n    FROM servicing_tasks t\n    WHERE t.renie_bin_id = b.renie_bin_id\n      AND t.status IN ('created','scheduled','in_progress')\n  )\n\n  -- 6. Exclude bins that already received an alert in the last 24h\n  AND NOT EXISTS (\n    SELECT 1\n    FROM bin_alerts a\n    WHERE a.renie_bin_id = b.renie_bin_id\n      AND a.sent_at > NOW() - INTERVAL '24 hours'\n  );",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -1424,
+        -608
+      ],
+      "id": "e2dbdd9d-5b75-44c7-ac5d-3a840ad930dd",
+      "name": "Postgres Node (Execute Query)",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUPABASE_POSTGRES_ID}}",
+          "name": "{{SUPABASE_POSTGRES_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1104,
+        -608
+      ],
+      "id": "c33f19c2-3106-4eb3-b069-1f08cfa4dca5",
+      "name": "Split In Batches (1 item per batch)"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO bin_alerts (\n  renie_bin_id,\n  alert_type,\n  bin_status_at_alert,\n  sent_at,\n  status,\n  poc_email,\n  poc_phone,\n  channels_sent,\n  created_at,\n  updated_at\n)\nVALUES (\n  '{{$json.renie_bin_id}}',\n  'offline',\n  '{{$json.current_status}}',\n  NULL,\n  'pending',\n  '{{$json.poc_email}}',\n  '{{ $json.poc_phone || \"\" }}',\n  '{}',\n  NOW(),\n  NOW()\n)\nRETURNING id, renie_bin_id, status;\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -784,
+        -480
+      ],
+      "id": "520cdee4-ed66-4a6a-a2c2-284f8a858b08",
+      "name": "Postgres - Create New Alert",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUPABASE_POSTGRES_ID}}",
+          "name": "{{SUPABASE_POSTGRES_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "from": "{{TWILIO_FROM_NUMBER}}",
+        "to": "+{{POC_WHATSAPP_NUMBER}}",
+        "toWhatsapp": true,
+        "message": "=🚨 [Alert] Bin Offline – {{$node[\"Split In Batches (1 item per batch)\"].json[\"binarea_name\"]}} ({{ $json.renie_bin_id }})\n\nHi {{$node[\"Split In Batches (1 item per batch)\"].json[\"poc_name \"] || 'POC Team'}}, 👋\n\n⚠️ The bin at *{{$node[\"Split In Batches (1 item per batch)\"].json[\"binarea_name\"]}}*  \n📍 {{$node[\"Split In Batches (1 item per batch)\"].json[\"details_position\"]}}, {{$node[\"Split In Batches (1 item per batch)\"].json[\"binarea_city\"]}}  \n🆔 Bin ID: {{ $json.renie_bin_id }}\n\nhas been offline since *{{$node[\"Split In Batches (1 item per batch)\"].json[\"current_status_date\"]}}*.\n\nPlease reply with:\n1️⃣ *Option 1*: ✅ Power is OFF daily (scheduled)  \n2️⃣ *Option 2*: ❌ Power is ON, but bin not working\n\n👉 If Option 1, reply in this format:  \nStart Time: [e.g., 7:00 PM]  \nEnd Time: [e.g., 9:00 AM]  \nDays: [e.g., Mon–Fri]\n\nThanks for your quick response 🙏  \n— Bin Monitoring System",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        -480,
+        -672
+      ],
+      "id": "b79016eb-6f86-4850-b99b-9c3a50284d0e",
+      "name": "Twilio - Send WhatsApp message to POC",
+      "credentials": {
+        "twilioApi": {
+          "id": "{{TWILIO_ACCOUNT_ID}}",
+          "name": "{{TWILIO_ACCOUNT_NAME}}"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE bin_alerts\nSET \n    status = 'sent',\n    channels_sent = array_append(COALESCE(channels_sent, '{}'), 'email'),\n    email_message_id = '{{ $json[\"messageId\"] || \"\" }}',\n    email_sent_at = NOW(),\n    sent_at = COALESCE(sent_at, NOW()),   -- only set if still NULL\n    updated_at = NOW()\n  \nWHERE TRIM(renie_bin_id) = TRIM('{{$node[\"Postgres - Create New Alert\"].json[\"renie_bin_id\"]}}')\n  AND status IN ('pending', 'failed', 'sent')\n  \n  RETURNING renie_bin_id, email_sent_at, status, channels_sent, email_message_id;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -128,
+        -336
+      ],
+      "id": "e936de2c-bac9-4a43-b7aa-8b8572f92e77",
+      "name": "Postgres - Update Alert (Email success/fail)",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUPABASE_POSTGRES_ID}}",
+          "name": "{{SUPABASE_POSTGRES_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE bin_alerts\nSET \n    status = 'sent',\n    channels_sent = array_append(COALESCE(channels_sent, '{}'), 'whatsapp'),\n    whatsapp_message_id = '{{ $json[\"sid\"] || \"\" }}',\n    whatsapp_sent_at = NOW(),\n    sent_at = COALESCE(sent_at, NOW()),   -- only set if still NULL\n    updated_at = NOW()\n  \nWHERE TRIM(renie_bin_id) = TRIM('{{$node[\"Postgres - Create New Alert\"].json[\"renie_bin_id\"]}}')\n  AND status IN ('pending', 'failed', 'sent')   -- catch cases where it hasn't succeeded yet\n\nRETURNING renie_bin_id, whatsapp_sent_at, status, channels_sent, whatsapp_message_id;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -112,
+        -672
+      ],
+      "id": "5b57325a-95c4-43d6-89c0-dd0438057d16",
+      "name": "Postgres - Update Alert (WhatsApp success/fail)",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUPABASE_POSTGRES_ID}}",
+          "name": "{{SUPABASE_POSTGRES_NAME}}"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "fieldsToMatchString": "renie_bin_id",
+        "joinMode": "keepEverything",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        320,
+        -320
+      ],
+      "id": "81da20f7-8fe2-4890-b1e6-4cbb3b000ae0",
+      "name": "Merge – Wait for channels"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE bin_alerts\nSET \n    status = CASE\n        WHEN '{{$json[\"email_sent_at\"]}}' IS NOT NULL OR '{{$json[\"whatsapp_sent_at\"]}}' IS NOT NULL \n            THEN 'sent'\n        ELSE 'failed'\n    END,\n    sent_at = COALESCE(\n        sent_at,\n        NULLIF('{{$json[\"email_sent_at\"]}}','')::timestamptz,\n        NULLIF('{{$json[\"whatsapp_sent_at\"]}}','')::timestamptz,\n        NOW()\n    ),\n    email_sent_at = COALESCE(\n        email_sent_at,\n        NULLIF('{{$json[\"email_sent_at\"]}}','')::timestamptz\n    ),\n    whatsapp_sent_at = COALESCE(\n        whatsapp_sent_at,\n        NULLIF('{{$json[\"whatsapp_sent_at\"]}}','')::timestamptz\n    ),\n    email_message_id = COALESCE(email_message_id, '{{$json[\"email_message_id\"]}}'),\n    whatsapp_message_id = COALESCE(whatsapp_message_id, '{{$json[\"whatsapp_message_id\"]}}'),\n    updated_at = NOW()\nWHERE TRIM(renie_bin_id) = TRIM('{{$json[\"renie_bin_id\"]}}');",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        704,
+        -192
+      ],
+      "id": "83d0ffb4-4e06-4937-be09-b9750f0d32cd",
+      "name": "Postgres – Final Update Alert (consolidation step)",
+      "credentials": {
+        "postgres": {
+          "id": "{{SUPABASE_POSTGRES_ID}}",
+          "name": "{{SUPABASE_POSTGRES_NAME}}"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Send automated Email to POC": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Update Alert (Email success/fail)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Postgres Node (Execute Query)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Node (Execute Query)": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches (1 item per batch)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches (1 item per batch)": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Postgres - Create New Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Create New Alert": {
+      "main": [
+        [
+          {
+            "node": "Send automated Email to POC",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Twilio - Send WhatsApp message to POC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Update Alert (Email success/fail)": {
+      "main": [
+        [
+          {
+            "node": "Merge – Wait for channels",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Twilio - Send WhatsApp message to POC": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Update Alert (WhatsApp success/fail)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Update Alert (WhatsApp success/fail)": {
+      "main": [
+        [
+          {
+            "node": "Merge – Wait for channels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge – Wait for channels": {
+      "main": [
+        [
+          {
+            "node": "Postgres – Final Update Alert (consolidation step)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres – Final Update Alert (consolidation step)": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches (1 item per batch)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "ac6e0465-1613-4ca9-9e32-e5aafcaa9632",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "{{INSTANCE_ID}}"
+  },
+  "id": "vmnMMAW54vpSMvWY",
+  "tags": []
+}
