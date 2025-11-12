@@ -2,7 +2,7 @@
 
 ### Developed at **Renie Tech Trading LLC**  
 **Role:** AI & Automation Engineer  
-**Engineer:** [Your Full Name]  
+**Engineer:** Ansh Srivastava  
 **Year:** 2025  
 
 ---
